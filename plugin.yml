@@ -1,0 +1,25 @@
+name: entire-core-auth
+description: Exchange the Buildkite agent's OIDC token for an entire-core service-account session token.
+author: https://github.com/entirehq
+requirements:
+  - curl
+  - jq
+configuration:
+  properties:
+    url:
+      type: string
+      description: entire-core deployment URL (e.g. https://us.auth.partial.to).
+    account:
+      type: string
+      description: Target service-account ID (svc_<ulid>). Created and bound by an operator via `entire-core admin sa bind`.
+      pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+    audience:
+      type: string
+      description: OIDC audience to request from Buildkite. Defaults to <url>/api/authz/sts. Override only if the provider was registered with a non-default audience.
+    export-env:
+      type: boolean
+      description: When true (default), exports the session token as ENTIRE_TOKEN to subsequent hooks and the command for this job so the entire-core CLI picks it up automatically.
+  required:
+    - url
+    - account
+  additionalProperties: false

@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+URL="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_URL:?entire-core-auth: url is required}"
+ACCOUNT="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_ACCOUNT:?entire-core-auth: account is required}"
+AUDIENCE="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_AUDIENCE:-${URL%/}/api/authz/sts}"
+EXPORT_ENV="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_EXPORT_ENV:-true}"
+
+echo "~~~ :key: Requesting Buildkite OIDC token"
+echo "audience=${AUDIENCE}"
+
+# Buildkite stamps --audience onto the issued token's aud claim, which
+# entire-core's STS verifies against the provider row's audience to
+# foreclose cross-deployment replay. The agent CLI handles auth to
+# agent.buildkite.com itself; no permission flag analogous to GitHub's
+# id-token: write is required.
+if ! OIDC_TOKEN="$(buildkite-agent oidc request-token --audience "${AUDIENCE}" 2>&1)"; then
+  echo "^^^ +++"
+  echo "Failed to fetch OIDC token from Buildkite:" >&2
+  echo "${OIDC_TOKEN}" >&2
+  exit 1
+fi
+if [[ -z "$OIDC_TOKEN" ]]; then
+  echo "buildkite-agent oidc request-token returned empty token" >&2
+  exit 1
+fi
+
+echo "~~~ :lock: Exchanging for entire-core session token"
+
+# Buildkite doesn't have a per-value ::add-mask:: equivalent, so we rely
+# on the agent's default redacted-vars patterns (*_TOKEN, *_SECRET, ...)
+# masking ENTIRE_TOKEN from later log output, plus not echoing OIDC_TOKEN
+# from this hook. Don't `set -x` here.
+
+RESP="$(mktemp)"
+trap 'rm -f "$RESP"' EXIT
+
+# RFC 8693 token exchange. audience = the relying party for the issued
+# token (the entire-core deployment base URL); resource = the SA to
+# assume. pkg/op dispatches federated vs operator on subject_token's iss.
+HTTP_CODE="$(curl -sLS -o "$RESP" -w '%{http_code}' \
+  -X POST "${URL%/}/oauth/token" \
+  -u "entire-cli:" \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange' \
+  --data-urlencode 'subject_token_type=urn:ietf:params:oauth:token-type:jwt' \
+  --data-urlencode "subject_token=${OIDC_TOKEN}" \
+  --data-urlencode "audience=${URL%/}" \
+  --data-urlencode "resource=${ACCOUNT}")"
+
+if [[ "$HTTP_CODE" != "200" ]]; then
+  echo "^^^ +++"
+  echo "Token exchange failed (HTTP ${HTTP_CODE}). Common causes:" >&2
+  echo "  - no binding for this (provider, account)" >&2
+  echo "  - attribute_filter mismatch (e.g. binding only allows pushes to main but pipeline ran on a PR)" >&2
+  echo "  - Buildkite OIDC audience mismatch with the provider row's accepted aud" >&2
+  cat "$RESP" >&2 || true
+  echo >&2
+  reason="$(jq -r '.error_description // .error // "unknown error"' < "$RESP" 2>/dev/null || echo "unknown error")"
+  buildkite-agent annotate --style error --context entire-core-auth \
+    "entire-core auth failed: ${reason}" || true
+  exit 1
+fi
+
+ACCESS_TOKEN="$(jq -r '.access_token' < "$RESP")"
+EXPIRES_IN="$(jq -r '.expires_in' < "$RESP")"
+
+if [[ -z "$ACCESS_TOKEN" || "$ACCESS_TOKEN" == "null" ]]; then
+  echo "STS response missing access_token" >&2
+  cat "$RESP" >&2 || true
+  exit 1
+fi
+
+echo "Got entire-core session token (expires in ${EXPIRES_IN}s)"
+
+# Default: export ENTIRE_TOKEN and ENTIRE_CORE_AUTH_BASE_URL so subsequent
+# `entire-core` invocations pick the token up and target the right
+# deployment without per-step plumbing. Mirrors the GitHub Actions wrapper.
+if [[ "${EXPORT_ENV,,}" == "true" ]]; then
+  : "${BUILDKITE_ENV_FILE:?BUILDKITE_ENV_FILE is not set; cannot propagate ENTIRE_TOKEN to subsequent hooks}"
+  printf 'export ENTIRE_TOKEN=%q\n' "$ACCESS_TOKEN" >> "$BUILDKITE_ENV_FILE"
+  printf 'export ENTIRE_CORE_AUTH_BASE_URL=%q\n' "${URL%/}" >> "$BUILDKITE_ENV_FILE"
+fi
