@@ -16,9 +16,6 @@ configuration:
     audience:
       type: string
       description: OIDC audience to request from Buildkite. Defaults to <url>/api/authz/sts. Override only if the provider was registered with a non-default audience.
-    export-env:
-      type: boolean
-      description: When true (default), exports the session token as ENTIRE_TOKEN to subsequent hooks and the command for this job so the entire-core CLI picks it up automatically.
   required:
     - url
     - account
