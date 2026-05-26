@@ -4,7 +4,6 @@ set -euo pipefail
 URL="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_URL:?entire-core-auth: url is required}"
 ACCOUNT="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_ACCOUNT:?entire-core-auth: account is required}"
 AUDIENCE="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_AUDIENCE:-${URL%/}/api/authz/sts}"
-EXPORT_ENV="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_EXPORT_ENV:-true}"
 
 echo "~~~ :key: Requesting Buildkite OIDC token"
 echo "audience=${AUDIENCE}"
@@ -73,11 +72,9 @@ fi
 
 echo "Got entire-core session token (expires in ${EXPIRES_IN}s)"
 
-# Default: export ENTIRE_TOKEN and ENTIRE_CORE_AUTH_BASE_URL so subsequent
+# Export ENTIRE_TOKEN and ENTIRE_CORE_AUTH_BASE_URL so subsequent
 # `entire-core` invocations pick the token up and target the right
 # deployment without per-step plumbing. Mirrors the GitHub Actions wrapper.
-if [[ "${EXPORT_ENV,,}" == "true" ]]; then
-  : "${BUILDKITE_ENV_FILE:?BUILDKITE_ENV_FILE is not set; cannot propagate ENTIRE_TOKEN to subsequent hooks}"
-  printf 'export ENTIRE_TOKEN=%q\n' "$ACCESS_TOKEN" >> "$BUILDKITE_ENV_FILE"
-  printf 'export ENTIRE_CORE_AUTH_BASE_URL=%q\n' "${URL%/}" >> "$BUILDKITE_ENV_FILE"
-fi
+: "${BUILDKITE_ENV_FILE:?BUILDKITE_ENV_FILE is not set; cannot propagate ENTIRE_TOKEN to subsequent hooks}"
+printf 'export ENTIRE_TOKEN=%q\n' "$ACCESS_TOKEN" >> "$BUILDKITE_ENV_FILE"
+printf 'export ENTIRE_CORE_AUTH_BASE_URL=%q\n' "${URL%/}" >> "$BUILDKITE_ENV_FILE"
