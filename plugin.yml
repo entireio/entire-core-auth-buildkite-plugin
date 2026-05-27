@@ -1,9 +1,17 @@
 name: entire-core-auth
-description: Exchange the Buildkite agent's OIDC token for an entire-core service-account session token.
+description: |
+  Runs as an environment hook (before Buildkite's default checkout):
+    1. Exchanges the agent's OIDC token for an entire-core service-account
+       session token via RFC 8693, exporting ENTIRE_TOKEN and
+       ENTIRE_CORE_AUTH_BASE_URL to the build env.
+    2. Downloads a pinned git-remote-entire from the public release
+       bucket and puts it on PATH so the native checkout (and later
+       steps) can resolve entire:// URLs.
 author: https://github.com/entirehq
 requirements:
   - curl
   - jq
+  - tar
 configuration:
   properties:
     url:

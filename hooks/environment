@@ -1,9 +1,28 @@
 #!/usr/bin/env bash
+#
+# Buildkite environment hook. Runs BEFORE Buildkite's default checkout
+# so that:
+#   1. ENTIRE_TOKEN is available to git-remote-entire when the native
+#      `git clone entire://<repo>` resolves the entire:// helper, and
+#   2. git-remote-entire itself is on $PATH (downloaded fresh each job
+#      because Buildkite Cloud hosted agents are stateless containers).
+#
+# Was hooks/pre-command in earlier versions of this plugin. pre-command
+# fires AFTER checkout, which doesn't work for pipelines whose source is
+# an entire:// URL.
 set -euo pipefail
 
 URL="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_URL:?entire-core-auth: url is required}"
 ACCOUNT="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_ACCOUNT:?entire-core-auth: account is required}"
 AUDIENCE="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_AUDIENCE:-${URL%/}/api/authz/sts}"
+
+# Pinned per-plugin-tag. To upgrade the git-remote-entire being installed
+# on the agent, bump this constant and cut a new plugin tag. The artifact
+# is published by entiredb's goreleaser to a dedicated public S3 bucket
+# in us-east-2 (linux amd64 + arm64 only — hosted Buildkite agents are
+# always linux).
+GIT_REMOTE_ENTIRE_SHA="536f074ed85b1728b54a3c777b73bc39ea4cba7b"
+GIT_REMOTE_ENTIRE_BASE="https://entire-public-release-bucket-7f3e2a01c9b48d56.s3.us-east-2.amazonaws.com/commit/${GIT_REMOTE_ENTIRE_SHA}"
 
 echo "~~~ :key: Requesting Buildkite OIDC token"
 echo "audience=${AUDIENCE}"
@@ -78,3 +97,41 @@ echo "Got entire-core session token (expires in ${EXPIRES_IN}s)"
 : "${BUILDKITE_ENV_FILE:?BUILDKITE_ENV_FILE is not set; cannot propagate ENTIRE_TOKEN to subsequent hooks}"
 printf 'export ENTIRE_TOKEN=%q\n' "$ACCESS_TOKEN" >> "$BUILDKITE_ENV_FILE"
 printf 'export ENTIRE_CORE_AUTH_BASE_URL=%q\n' "${URL%/}" >> "$BUILDKITE_ENV_FILE"
+
+echo "~~~ :package: Installing git-remote-entire"
+
+# Hosted Buildkite agents are linux containers. The goreleaser config in
+# entiredb only publishes linux artifacts for git-remote-entire; this hook
+# is the wrong place to run on darwin self-hosted agents (those should
+# install git-remote-entire via their own provisioning instead).
+os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+if [[ "$os" != "linux" ]]; then
+  echo "git-remote-entire is only published for linux (detected: $os)" >&2
+  buildkite-agent annotate --style error --context entire-core-auth \
+    "entire-core-auth plugin: git-remote-entire is linux-only; this agent reports os=${os}" || true
+  exit 1
+fi
+
+case "$(uname -m)" in
+  x86_64|amd64) arch=amd64 ;;
+  aarch64|arm64) arch=arm64 ;;
+  *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+
+BIN_DIR="$(mktemp -d -t entire-bin-XXXXXXXX)"
+TARBALL="${BIN_DIR}/git-remote-entire.tar.gz"
+BIN_URL="${GIT_REMOTE_ENTIRE_BASE}/git-remote-entire_linux_${arch}.tar.gz"
+
+if ! curl -fsSL -o "$TARBALL" "$BIN_URL"; then
+  echo "Failed to download git-remote-entire from $BIN_URL" >&2
+  buildkite-agent annotate --style error --context entire-core-auth \
+    "entire-core-auth plugin: failed to fetch git-remote-entire from ${BIN_URL}" || true
+  exit 1
+fi
+
+tar -xzf "$TARBALL" -C "$BIN_DIR"
+rm -f "$TARBALL"
+chmod +x "${BIN_DIR}/git-remote-entire"
+
+echo "Installed git-remote-entire (${GIT_REMOTE_ENTIRE_SHA:0:12}, linux/${arch}) to ${BIN_DIR}"
+printf 'export PATH=%q:${PATH}\n' "$BIN_DIR" >> "$BUILDKITE_ENV_FILE"
