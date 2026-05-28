@@ -132,6 +132,6 @@ fi
 tar -xzf "$TARBALL" -C "$BIN_DIR"
 rm -f "$TARBALL"
 chmod +x "${BIN_DIR}/git-remote-entire"
+mv -v "${BIN_DIR}/git-remote-entire" /usr/local/bin
 
-echo "Installed git-remote-entire (${GIT_REMOTE_ENTIRE_SHA:0:12}, linux/${arch}) to ${BIN_DIR}"
-printf 'export PATH=%q:${PATH}\n' "$BIN_DIR" >> "$BUILDKITE_ENV_FILE"
+echo "Installed git-remote-entire (${GIT_REMOTE_ENTIRE_SHA:0:12}, linux/${arch}) to /usr/local/bin"
