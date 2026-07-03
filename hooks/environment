@@ -101,8 +101,8 @@ export ENTIRE_CORE_AUTH_BASE_URL="${URL%/}"
 
 echo "~~~ :package: Installing git-remote-entire"
 
-# Hosted Buildkite agents are linux containers. The goreleaser config in
-# entiredb only publishes linux artifacts for git-remote-entire; this hook
+# Hosted Buildkite agents are linux containers. entireio/cli's nonprod
+# goreleaser only publishes linux artifacts for git-remote-entire; this hook
 # is the wrong place to run on darwin self-hosted agents (those should
 # install git-remote-entire via their own provisioning instead).
 os="$(uname -s | tr '[:upper:]' '[:lower:]')"
