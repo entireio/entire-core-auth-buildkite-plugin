@@ -22,9 +22,8 @@ AUDIENCE="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_AUDIENCE:-${URL%/}/api/authz/sts}"
 # entireio/cli's publish-git-remote-entire workflow (goreleaser) to a
 # dedicated public S3 bucket in us-east-2 (linux amd64 + arm64 only —
 # hosted Buildkite agents are always linux). Note: shas older than the
-# workflow's introduction aren't in the bucket; entiredb shas from
-# before the command moved (like this one) predate it.
-GIT_REMOTE_ENTIRE_SHA="536f074ed85b1728b54a3c777b73bc39ea4cba7b"
+# workflow's introduction (2026-07) aren't in the bucket.
+GIT_REMOTE_ENTIRE_SHA="7b6b53b52d6f6129b09edd615ff54b7b5ea2105e"
 GIT_REMOTE_ENTIRE_BASE="https://entire-public-release-bucket-7f3e2a01c9b48d56.s3.us-east-2.amazonaws.com/commit/${GIT_REMOTE_ENTIRE_SHA}"
 
 echo "~~~ :key: Requesting Buildkite OIDC token"
@@ -102,8 +101,8 @@ export ENTIRE_CORE_AUTH_BASE_URL="${URL%/}"
 
 echo "~~~ :package: Installing git-remote-entire"
 
-# Hosted Buildkite agents are linux containers. The goreleaser config in
-# entiredb only publishes linux artifacts for git-remote-entire; this hook
+# Hosted Buildkite agents are linux containers. entireio/cli's nonprod
+# goreleaser only publishes linux artifacts for git-remote-entire; this hook
 # is the wrong place to run on darwin self-hosted agents (those should
 # install git-remote-entire via their own provisioning instead).
 os="$(uname -s | tr '[:upper:]' '[:lower:]')"
