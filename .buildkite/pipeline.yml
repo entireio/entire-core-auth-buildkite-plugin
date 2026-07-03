@@ -1,0 +1,22 @@
+# Self-test: run the plugin at the commit under test against a real
+# entire-core deployment. Referencing the plugin as #${BUILDKITE_COMMIT}
+# (interpolated at `pipeline upload` time) makes the agent fetch THIS
+# repo at THIS commit, so the environment hook being reviewed is the one
+# that runs. A green step proves, end to end:
+#   - buildkite-agent OIDC token minting,
+#   - the RFC 8693 exchange against ${ENTIRE_CORE_AUTH_URL},
+#   - the pinned git-remote-entire sha exists in the public bucket and
+#     unpacks to a runnable binary (a PR bumping GIT_REMOTE_ENTIRE_SHA
+#     to an unpublished sha fails here).
+#
+# ENTIRE_CORE_AUTH_URL and ENTIRE_CORE_AUTH_ACCOUNT come from
+# pipeline-level env (see README, "CI"); the SA needs a provider binding
+# whose attribute_filter admits every branch of this pipeline, or PR
+# builds fail the exchange.
+steps:
+  - label: ":lock: OIDC self-test"
+    command: .buildkite/self-test.sh
+    plugins:
+      - entireio/entire-core-auth#${BUILDKITE_COMMIT}:
+          url: "${ENTIRE_CORE_AUTH_URL}"
+          account: "${ENTIRE_CORE_AUTH_ACCOUNT}"
