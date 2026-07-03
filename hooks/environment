@@ -17,10 +17,13 @@ ACCOUNT="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_ACCOUNT:?entire-core-auth: account 
 AUDIENCE="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_AUDIENCE:-${URL%/}/api/authz/sts}"
 
 # Pinned per-plugin-tag. To upgrade the git-remote-entire being installed
-# on the agent, bump this constant and cut a new plugin tag. The artifact
-# is published by entiredb's goreleaser to a dedicated public S3 bucket
-# in us-east-2 (linux amd64 + arm64 only — hosted Buildkite agents are
-# always linux).
+# on the agent, bump this constant to a sha from entireio/cli main and
+# cut a new plugin tag. The artifact is published per-commit by
+# entireio/cli's publish-git-remote-entire workflow (goreleaser) to a
+# dedicated public S3 bucket in us-east-2 (linux amd64 + arm64 only —
+# hosted Buildkite agents are always linux). Note: shas older than the
+# workflow's introduction aren't in the bucket; entiredb shas from
+# before the command moved (like this one) predate it.
 GIT_REMOTE_ENTIRE_SHA="536f074ed85b1728b54a3c777b73bc39ea4cba7b"
 GIT_REMOTE_ENTIRE_BASE="https://entire-public-release-bucket-7f3e2a01c9b48d56.s3.us-east-2.amazonaws.com/commit/${GIT_REMOTE_ENTIRE_SHA}"
 
