@@ -9,14 +9,25 @@
 #     unpacks to a runnable binary (a PR bumping GIT_REMOTE_ENTIRE_SHA
 #     to an unpublished sha fails here).
 #
-# ENTIRE_CORE_AUTH_URL and ENTIRE_CORE_AUTH_ACCOUNT come from
-# pipeline-level env (see README, "CI"); the SA needs a provider binding
-# whose attribute_filter admits every branch of this pipeline, or PR
-# builds fail the exchange.
+# What it does NOT cover: plugin.yml's `configuration` schema. The agent
+# only checks it with plugin validation turned on, which is not the
+# default, so a config key here that plugin.yml never declares still
+# reaches the hook as BUILDKITE_PLUGIN_* and can pass. The hook's own
+# `:?` guards are what actually fail a misnamed key.
+#
+# ENTIRE_CORE_AUTH_URL and ENTIRE_CORE_AUTH_RESOURCE come from
+# pipeline-level env (see README, "CI"); the principal needs a provider
+# binding whose attribute_filter admits every branch of this pipeline, or
+# PR builds fail the exchange.
+#
+# ENTIRE_CORE_AUTH_RESOURCE holds a service account (svc_<ulid>) rather
+# than an automation on purpose: an automation's repo-read grant carries a
+# 24h TTL and nothing renews it until the reconciler ships, so a self-test
+# pinned to one would go red on its own overnight.
 steps:
   - label: ":lock: OIDC self-test"
     command: .buildkite/self-test.sh
     plugins:
       - entireio/entire-core-auth#${BUILDKITE_COMMIT}:
           url: "${ENTIRE_CORE_AUTH_URL}"
-          account: "${ENTIRE_CORE_AUTH_ACCOUNT}"
+          resource: "${ENTIRE_CORE_AUTH_RESOURCE}"

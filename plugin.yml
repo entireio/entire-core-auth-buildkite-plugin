@@ -1,9 +1,9 @@
 name: entire-core-auth
 description: |
   Runs as an environment hook (before Buildkite's default checkout):
-    1. Exchanges the agent's OIDC token for an entire-core service-account
-       session token via RFC 8693, exporting ENTIRE_TOKEN and
-       ENTIRE_CORE_AUTH_BASE_URL to the build env.
+    1. Exchanges the agent's OIDC token for an entire-core session token
+       asserting the configured `resource` (RFC 8693), exporting
+       ENTIRE_TOKEN and ENTIRE_CORE_AUTH_BASE_URL to the build env.
     2. Downloads a pinned git-remote-entire from the public release
        bucket and puts it on PATH so the native checkout (and later
        steps) can resolve entire:// URLs.
@@ -17,14 +17,18 @@ configuration:
     url:
       type: string
       description: entire-core deployment URL (e.g. https://us.auth.partial.to).
-    account:
+    resource:
       type: string
-      description: Target service-account ID (svc_<ulid>). Created and bound by an operator via `entire-core admin sa bind`.
-      pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+      description: >-
+        Principal to assume, as the RFC 8693 `resource` form value, sent to the exchange verbatim.
+        CI enrolment scaffolds an automation and emits this exact string: automation:aut_<ulid> —
+        note the prefix, which the enroll response's bare automation_id does not carry.
+        svc_<ulid> names an operator-bound service account instead (`entire-core admin sa bind`).
+      pattern: "^(automation:aut_|svc_)[0-9A-HJKMNP-TV-Z]{26}$"
     audience:
       type: string
       description: OIDC audience to request from Buildkite. Defaults to <url>/api/authz/sts. Override only if the provider was registered with a non-default audience.
   required:
     - url
-    - account
+    - resource
   additionalProperties: false

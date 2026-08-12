@@ -18,7 +18,7 @@ command -v git-remote-entire
 
 # Optional full round trip: prove the minted token is accepted by the
 # deployment, not just issued. Set ENTIRE_SELF_TEST_REPO (pipeline env)
-# to an entire:// URL the service account can read.
+# to an entire:// URL the configured resource can read.
 if [[ -n "${ENTIRE_SELF_TEST_REPO:-}" ]]; then
   echo "--- git ls-remote ${ENTIRE_SELF_TEST_REPO}"
   git ls-remote "${ENTIRE_SELF_TEST_REPO}" HEAD
