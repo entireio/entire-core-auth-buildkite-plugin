@@ -11,7 +11,7 @@ steps:
     plugins:
       - entireio/entire-core-auth#v0.2.0:
           url: "https://us.auth.partial.to"
-          resource: "automation:aut_01KSKXHVCRJ7H4PNNWXWKPX20P"
+          resource: "automation:aut_01ARZ3NDEKTSV4RRFFQ69G5FAV"
     command: buildkite-agent pipeline upload
 ```
 
