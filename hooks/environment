@@ -13,7 +13,12 @@
 set -euo pipefail
 
 URL="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_URL:?entire-core-auth: url is required}"
-ACCOUNT="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_ACCOUNT:?entire-core-auth: account is required}"
+# Passed to the exchange verbatim as `resource`. The plugin does NOT construct
+# or prefix it: entire-core's enrolment scaffold emits the exact form value
+# (automation:aut_<ulid>), and a self-managed pipeline pastes the same string
+# from the enroll response. Prefixing here would be a second place that has to
+# agree with oidcop's automationResourcePrefix.
+RESOURCE="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_RESOURCE:?entire-core-auth: resource is required}"
 AUDIENCE="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_AUDIENCE:-${URL%/}/api/authz/sts}"
 
 # Pinned per-plugin-tag. To upgrade the git-remote-entire being installed
@@ -56,8 +61,11 @@ RESP="$(mktemp)"
 trap 'rm -f "$RESP"' EXIT
 
 # RFC 8693 token exchange. audience = the relying party for the issued
-# token (the entire-core deployment base URL); resource = the SA to
-# assume. pkg/op dispatches federated vs operator on subject_token's iss.
+# token (the entire-core deployment base URL); resource = the principal to
+# assume — `automation:aut_<ulid>` for a CI automation (what enrolment
+# scaffolds), or a bare `svc_<ulid>` for an operator-bound service account.
+# pkg/op dispatches federated vs operator on subject_token's iss, and
+# entire-core picks the exchange by the resource's shape.
 HTTP_CODE="$(curl -sLS -o "$RESP" -w '%{http_code}' \
   -X POST "${URL%/}/oauth/token" \
   -u "entire-cli:" \
@@ -66,12 +74,13 @@ HTTP_CODE="$(curl -sLS -o "$RESP" -w '%{http_code}' \
   --data-urlencode 'subject_token_type=urn:ietf:params:oauth:token-type:jwt' \
   --data-urlencode "subject_token=${OIDC_TOKEN}" \
   --data-urlencode "audience=${URL%/}" \
-  --data-urlencode "resource=${ACCOUNT}")"
+  --data-urlencode "resource=${RESOURCE}")"
 
 if [[ "$HTTP_CODE" != "200" ]]; then
   echo "^^^ +++"
-  echo "Token exchange failed (HTTP ${HTTP_CODE}). Common causes:" >&2
-  echo "  - no binding for this (provider, account)" >&2
+  echo "Token exchange failed (HTTP ${HTTP_CODE}) for resource=${RESOURCE}. Common causes:" >&2
+  echo "  - resource is the bare id: an automation must be sent as automation:aut_<ulid>, not aut_<ulid>" >&2
+  echo "  - no binding for this (provider, resource)" >&2
   echo "  - attribute_filter mismatch (e.g. binding only allows pushes to main but pipeline ran on a PR)" >&2
   echo "  - Buildkite OIDC audience mismatch with the provider row's accepted aud" >&2
   cat "$RESP" >&2 || true
