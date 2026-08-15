@@ -28,7 +28,14 @@ AUDIENCE="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_AUDIENCE:-${URL%/}/api/authz/sts}"
 # dedicated public S3 bucket in us-east-2 (linux amd64 + arm64 only —
 # hosted Buildkite agents are always linux). Note: shas older than the
 # workflow's introduction (2026-07) aren't in the bucket.
-GIT_REMOTE_ENTIRE_SHA="7b6b53b52d6f6129b09edd615ff54b7b5ea2105e"
+# 7b6b53b5 (the previous pin) predates the direct-bearer transport: it
+# EXCHANGED ENTIRE_TOKEN for a repo-access token, which an automation
+# session token refuses by design (terminal credential, ADR
+# 20260728-automation-principal decision 5) — every automation-principal
+# checkout failed with "subject_token may not exchange for a repo-access
+# token". 7ddf2fc2 presents ENTIRE_TOKEN verbatim as the bearer and the
+# data plane authorizes the automation subject directly.
+GIT_REMOTE_ENTIRE_SHA="7ddf2fc26c1ba521309ca2b5cf356d1e54228afb"
 GIT_REMOTE_ENTIRE_BASE="https://entire-public-release-bucket-7f3e2a01c9b48d56.s3.us-east-2.amazonaws.com/commit/${GIT_REMOTE_ENTIRE_SHA}"
 
 echo "~~~ :key: Requesting Buildkite OIDC token"
