@@ -149,6 +149,23 @@ fi
 tar -xzf "$TARBALL" -C "$BIN_DIR"
 rm -f "$TARBALL"
 chmod +x "${BIN_DIR}/git-remote-entire"
-mv -v "${BIN_DIR}/git-remote-entire" /usr/local/bin
 
-echo "Installed git-remote-entire (${GIT_REMOTE_ENTIRE_SHA:0:12}, linux/${arch}) to /usr/local/bin"
+# Hosted agents run the job as root, so /usr/local/bin is writable and putting
+# the binary there needs no PATH change. Self-hosted agents run jobs as an
+# unprivileged user: install under the agent's build path instead and prepend
+# that to PATH. A fixed directory rather than the download temp dir, so an
+# agent that reuses instances overwrites it per job instead of accumulating one
+# copy per build.
+if [[ -w /usr/local/bin ]]; then
+  INSTALL_DIR=/usr/local/bin
+  mv -v "${BIN_DIR}/git-remote-entire" "$INSTALL_DIR"
+else
+  INSTALL_DIR="${BUILDKITE_BUILD_PATH:-$BIN_DIR}/.entire-bin"
+  mkdir -p "$INSTALL_DIR"
+  mv -v "${BIN_DIR}/git-remote-entire" "$INSTALL_DIR"
+  export PATH="${INSTALL_DIR}:${PATH}"
+fi
+
+rmdir "$BIN_DIR" 2>/dev/null || true
+
+echo "Installed git-remote-entire (${GIT_REMOTE_ENTIRE_SHA:0:12}, linux/${arch}) to ${INSTALL_DIR}"
