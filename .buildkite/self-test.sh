@@ -16,6 +16,12 @@ echo "--- ENTIRE_CORE_AUTH_BASE_URL matches plugin url"
 echo "--- git-remote-entire on PATH"
 command -v git-remote-entire
 
+echo "--- GIT_HTTP_USER_AGENT tags Buildkite"
+[[ "${GIT_HTTP_USER_AGENT:-}" == git-remote-entire/*"(buildkite)" ]] || {
+  echo "GIT_HTTP_USER_AGENT=${GIT_HTTP_USER_AGENT:-<unset>}" >&2
+  exit 1
+}
+
 # Optional full round trip: prove the minted token is accepted by the
 # deployment, not just issued. Set ENTIRE_SELF_TEST_REPO (pipeline env)
 # to an entire:// URL the configured resource can read.

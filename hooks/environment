@@ -35,7 +35,8 @@ AUDIENCE="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_AUDIENCE:-${URL%/}/api/authz/sts}"
 # checkout failed with "subject_token may not exchange for a repo-access
 # token". 7ddf2fc2 presents ENTIRE_TOKEN verbatim as the bearer and the
 # data plane authorizes the automation subject directly.
-GIT_REMOTE_ENTIRE_SHA="7ddf2fc26c1ba521309ca2b5cf356d1e54228afb"
+# 57de2c37 honours GIT_HTTP_USER_AGENT (cli#2701).
+GIT_REMOTE_ENTIRE_SHA="57de2c37992efdbcc0519bda2376ccf93f3020c2"
 GIT_REMOTE_ENTIRE_BASE="https://entire-public-release-bucket-7f3e2a01c9b48d56.s3.us-east-2.amazonaws.com/commit/${GIT_REMOTE_ENTIRE_SHA}"
 
 echo "~~~ :key: Requesting Buildkite OIDC token"
@@ -167,5 +168,10 @@ else
 fi
 
 rmdir "$BIN_DIR" 2>/dev/null || true
+
+# Tag Buildkite traffic; servers parse the prefix.
+if [[ -z "${GIT_HTTP_USER_AGENT+set}" ]]; then
+  export GIT_HTTP_USER_AGENT="git-remote-entire/0.0.0+${GIT_REMOTE_ENTIRE_SHA} (buildkite)"
+fi
 
 echo "Installed git-remote-entire (${GIT_REMOTE_ENTIRE_SHA:0:12}, linux/${arch}) to ${INSTALL_DIR}"
