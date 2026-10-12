@@ -16,9 +16,12 @@ echo "--- ENTIRE_CORE_AUTH_BASE_URL matches plugin url"
 echo "--- git-remote-entire on PATH"
 command -v git-remote-entire
 
-echo "--- GIT_HTTP_USER_AGENT tags Buildkite"
-[[ "${GIT_HTTP_USER_AGENT:-}" == git-remote-entire/*"(buildkite)" ]] || {
-  echo "GIT_HTTP_USER_AGENT=${GIT_HTTP_USER_AGENT:-<unset>}" >&2
+echo "--- git-remote-entire shim tags Buildkite"
+helper="$(command -v git-remote-entire)"
+grep -q '(buildkite)' "$helper" || { cat "$helper" >&2; exit 1; }
+[[ -x "${helper}.bin" ]] || { echo "${helper}.bin missing" >&2; exit 1; }
+[[ -z "${GIT_HTTP_USER_AGENT+set}" ]] || {
+  echo "GIT_HTTP_USER_AGENT leaked into the job" >&2
   exit 1
 }
 

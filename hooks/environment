@@ -159,19 +159,22 @@ chmod +x "${BIN_DIR}/git-remote-entire"
 # copy per build.
 if [[ -w /usr/local/bin ]]; then
   INSTALL_DIR=/usr/local/bin
-  mv -v "${BIN_DIR}/git-remote-entire" "$INSTALL_DIR"
 else
   INSTALL_DIR="${BUILDKITE_BUILD_PATH:-$BIN_DIR}/.entire-bin"
   mkdir -p "$INSTALL_DIR"
-  mv -v "${BIN_DIR}/git-remote-entire" "$INSTALL_DIR"
   export PATH="${INSTALL_DIR}:${PATH}"
 fi
+mv -v "${BIN_DIR}/git-remote-entire" "${INSTALL_DIR}/git-remote-entire.bin"
+
+# Shim tags helper traffic only; plain git untouched.
+UA="git-remote-entire/0.0.0+${GIT_REMOTE_ENTIRE_SHA} (buildkite)"
+cat > "${INSTALL_DIR}/git-remote-entire" <<EOF
+#!/bin/sh
+export GIT_HTTP_USER_AGENT="\${GIT_HTTP_USER_AGENT-${UA}}"
+exec "${INSTALL_DIR}/git-remote-entire.bin" "\$@"
+EOF
+chmod +x "${INSTALL_DIR}/git-remote-entire"
 
 rmdir "$BIN_DIR" 2>/dev/null || true
-
-# Tag Buildkite traffic; servers parse the prefix.
-if [[ -z "${GIT_HTTP_USER_AGENT+set}" ]]; then
-  export GIT_HTTP_USER_AGENT="git-remote-entire/0.0.0+${GIT_REMOTE_ENTIRE_SHA} (buildkite)"
-fi
 
 echo "Installed git-remote-entire (${GIT_REMOTE_ENTIRE_SHA:0:12}, linux/${arch}) to ${INSTALL_DIR}"
