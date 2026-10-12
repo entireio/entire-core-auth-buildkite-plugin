@@ -1,15 +1,6 @@
 #!/usr/bin/env bash
 #
-# Buildkite environment hook. Runs BEFORE Buildkite's default checkout
-# so that:
-#   1. ENTIRE_TOKEN is available to git-remote-entire when the native
-#      `git clone entire://<repo>` resolves the entire:// helper, and
-#   2. git-remote-entire itself is on $PATH (downloaded fresh each job
-#      because Buildkite Cloud hosted agents are stateless containers).
-#
-# Was hooks/pre-command in earlier versions of this plugin. pre-command
-# fires AFTER checkout, which doesn't work for pipelines whose source is
-# an entire:// URL.
+# Runs before checkout: entire:// clones need ENTIRE_TOKEN and the helper.
 set -euo pipefail
 
 URL="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_URL:?entire-core-auth: url is required}"
@@ -21,21 +12,9 @@ URL="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_URL:?entire-core-auth: url is required}
 RESOURCE="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_RESOURCE:?entire-core-auth: resource is required}"
 AUDIENCE="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_AUDIENCE:-${URL%/}/api/authz/sts}"
 
-# Pinned per-plugin-tag. To upgrade the git-remote-entire being installed
-# on the agent, bump this constant to a sha from entireio/cli main and
-# cut a new plugin tag. The artifact is published per-commit by
-# entireio/cli's publish-git-remote-entire workflow (goreleaser) to a
-# dedicated public S3 bucket in us-east-2 (linux amd64 + arm64 only —
-# hosted Buildkite agents are always linux). Note: shas older than the
-# workflow's introduction (2026-07) aren't in the bucket.
-# 7b6b53b5 (the previous pin) predates the direct-bearer transport: it
-# EXCHANGED ENTIRE_TOKEN for a repo-access token, which an automation
-# session token refuses by design (terminal credential, ADR
-# 20260728-automation-principal decision 5) — every automation-principal
-# checkout failed with "subject_token may not exchange for a repo-access
-# token". 7ddf2fc2 presents ENTIRE_TOKEN verbatim as the bearer and the
-# data plane authorizes the automation subject directly.
-GIT_REMOTE_ENTIRE_SHA="7ddf2fc26c1ba521309ca2b5cf356d1e54228afb"
+# Bucket holds linux builds of cli main only.
+# The shim below needs GIT_HTTP_USER_AGENT support.
+GIT_REMOTE_ENTIRE_SHA="57de2c37992efdbcc0519bda2376ccf93f3020c2"
 GIT_REMOTE_ENTIRE_BASE="https://entire-public-release-bucket-7f3e2a01c9b48d56.s3.us-east-2.amazonaws.com/commit/${GIT_REMOTE_ENTIRE_SHA}"
 
 echo "~~~ :key: Requesting Buildkite OIDC token"
@@ -150,21 +129,25 @@ tar -xzf "$TARBALL" -C "$BIN_DIR"
 rm -f "$TARBALL"
 chmod +x "${BIN_DIR}/git-remote-entire"
 
-# Hosted agents run the job as root, so /usr/local/bin is writable and putting
-# the binary there needs no PATH change. Self-hosted agents run jobs as an
-# unprivileged user: install under the agent's build path instead and prepend
-# that to PATH. A fixed directory rather than the download temp dir, so an
-# agent that reuses instances overwrites it per job instead of accumulating one
-# copy per build.
+# Self-hosted jobs cannot write /usr/local/bin.
+# A fixed dir stops reused agents accumulating copies.
 if [[ -w /usr/local/bin ]]; then
   INSTALL_DIR=/usr/local/bin
-  mv -v "${BIN_DIR}/git-remote-entire" "$INSTALL_DIR"
 else
   INSTALL_DIR="${BUILDKITE_BUILD_PATH:-$BIN_DIR}/.entire-bin"
   mkdir -p "$INSTALL_DIR"
-  mv -v "${BIN_DIR}/git-remote-entire" "$INSTALL_DIR"
   export PATH="${INSTALL_DIR}:${PATH}"
 fi
+mv -v "${BIN_DIR}/git-remote-entire" "${INSTALL_DIR}/git-remote-entire.bin"
+
+# Shim keeps the UA off plain git calls.
+UA="git-remote-entire/0.0.0+${GIT_REMOTE_ENTIRE_SHA} (buildkite)"
+cat > "${INSTALL_DIR}/git-remote-entire" <<EOF
+#!/bin/sh
+export GIT_HTTP_USER_AGENT="\${GIT_HTTP_USER_AGENT-${UA}}"
+exec "${INSTALL_DIR}/git-remote-entire.bin" "\$@"
+EOF
+chmod +x "${INSTALL_DIR}/git-remote-entire"
 
 rmdir "$BIN_DIR" 2>/dev/null || true
 
