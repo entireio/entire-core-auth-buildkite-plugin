@@ -14,7 +14,7 @@ AUDIENCE="${BUILDKITE_PLUGIN_ENTIRE_CORE_AUTH_AUDIENCE:-${URL%/}/api/authz/sts}"
 
 # Bucket holds linux builds of cli main only.
 # The shim below needs GIT_HTTP_USER_AGENT support.
-GIT_REMOTE_ENTIRE_SHA="57de2c37992efdbcc0519bda2376ccf93f3020c2"
+GIT_REMOTE_ENTIRE_SHA="4b8cdfaf0d15e236835c3b7c85d8803b112574bc" # cli v0.11.5
 GIT_REMOTE_ENTIRE_BASE="https://entire-public-release-bucket-7f3e2a01c9b48d56.s3.us-east-2.amazonaws.com/commit/${GIT_REMOTE_ENTIRE_SHA}"
 
 echo "~~~ :key: Requesting Buildkite OIDC token"
@@ -96,59 +96,84 @@ export ENTIRE_CORE_AUTH_BASE_URL="${URL%/}"
 
 echo "~~~ :package: Installing git-remote-entire"
 
-# Hosted Buildkite agents are linux containers. entireio/cli's nonprod
-# goreleaser only publishes linux artifacts for git-remote-entire; this hook
-# is the wrong place to run on darwin self-hosted agents (those should
-# install git-remote-entire via their own provisioning instead).
-os="$(uname -s | tr '[:upper:]' '[:lower:]')"
-if [[ "$os" != "linux" ]]; then
-  echo "git-remote-entire is only published for linux (detected: $os)" >&2
-  buildkite-agent annotate --style error --context entire-core-auth \
-    "entire-core-auth plugin: git-remote-entire is linux-only; this agent reports os=${os}" || true
-  exit 1
+# A helper already on PATH at MIN_VERSION or newer (baked into the agent
+# image) is used as is; only the User-Agent shim goes in front of it.
+MIN_VERSION=0.11.5
+BAKED=""
+if BAKED_PATH="$(command -v git-remote-entire)"; then
+  BAKED_VERSION="$("$BAKED_PATH" --version 2>/dev/null | head -n1 || true)"
+  if [[ "$BAKED_VERSION" =~ ^git-remote-entire\ v?([0-9]+\.[0-9]+\.[0-9]+)$ ]] \
+    && printf '%s\n' "$MIN_VERSION" "${BASH_REMATCH[1]}" | sort -V -C; then
+    BAKED="$BAKED_PATH"
+    UA="git-remote-entire/${BASH_REMATCH[1]} (buildkite)"
+  fi
 fi
 
-case "$(uname -m)" in
-  x86_64|amd64) arch=amd64 ;;
-  aarch64|arm64) arch=arm64 ;;
-  *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
-esac
-
-BIN_DIR="$(mktemp -d -t entire-bin-XXXXXXXX)"
-TARBALL="${BIN_DIR}/git-remote-entire.tar.gz"
-BIN_URL="${GIT_REMOTE_ENTIRE_BASE}/git-remote-entire_linux_${arch}.tar.gz"
-
-if ! curl -fsSL -o "$TARBALL" "$BIN_URL"; then
-  echo "Failed to download git-remote-entire from $BIN_URL" >&2
-  buildkite-agent annotate --style error --context entire-core-auth \
-    "entire-core-auth plugin: failed to fetch git-remote-entire from ${BIN_URL}" || true
-  exit 1
-fi
-
-tar -xzf "$TARBALL" -C "$BIN_DIR"
-rm -f "$TARBALL"
-chmod +x "${BIN_DIR}/git-remote-entire"
-
-# Self-hosted jobs cannot write /usr/local/bin.
-# A fixed dir stops reused agents accumulating copies.
-if [[ -w /usr/local/bin ]]; then
-  INSTALL_DIR=/usr/local/bin
-else
-  INSTALL_DIR="${BUILDKITE_BUILD_PATH:-$BIN_DIR}/.entire-bin"
+if [[ -n "$BAKED" ]]; then
+  INSTALL_DIR="${BUILDKITE_BUILD_PATH:-$(mktemp -d -t entire-bin-XXXXXXXX)}/.entire-bin"
   mkdir -p "$INSTALL_DIR"
+  rm -f "${INSTALL_DIR}/git-remote-entire.bin"
   export PATH="${INSTALL_DIR}:${PATH}"
+  HELPER="$BAKED"
+else
+  # Hosted Buildkite agents are linux containers. entireio/cli's nonprod
+  # goreleaser only publishes linux artifacts for git-remote-entire; this hook
+  # is the wrong place to run on darwin self-hosted agents (those should
+  # install git-remote-entire via their own provisioning instead).
+  os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  if [[ "$os" != "linux" ]]; then
+    echo "git-remote-entire is only published for linux (detected: $os)" >&2
+    buildkite-agent annotate --style error --context entire-core-auth \
+      "entire-core-auth plugin: git-remote-entire is linux-only; this agent reports os=${os}" || true
+    exit 1
+  fi
+
+  case "$(uname -m)" in
+    x86_64|amd64) arch=amd64 ;;
+    aarch64|arm64) arch=arm64 ;;
+    *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+  esac
+
+  BIN_DIR="$(mktemp -d -t entire-bin-XXXXXXXX)"
+  TARBALL="${BIN_DIR}/git-remote-entire.tar.gz"
+  BIN_URL="${GIT_REMOTE_ENTIRE_BASE}/git-remote-entire_linux_${arch}.tar.gz"
+
+  if ! curl -fsSL -o "$TARBALL" "$BIN_URL"; then
+    echo "Failed to download git-remote-entire from $BIN_URL" >&2
+    buildkite-agent annotate --style error --context entire-core-auth \
+      "entire-core-auth plugin: failed to fetch git-remote-entire from ${BIN_URL}" || true
+    exit 1
+  fi
+
+  tar -xzf "$TARBALL" -C "$BIN_DIR"
+  rm -f "$TARBALL"
+  chmod +x "${BIN_DIR}/git-remote-entire"
+
+  # Self-hosted jobs cannot write /usr/local/bin.
+  # A fixed dir stops reused agents accumulating copies.
+  if [[ -w /usr/local/bin ]]; then
+    INSTALL_DIR=/usr/local/bin
+  else
+    INSTALL_DIR="${BUILDKITE_BUILD_PATH:-$BIN_DIR}/.entire-bin"
+    mkdir -p "$INSTALL_DIR"
+    export PATH="${INSTALL_DIR}:${PATH}"
+  fi
+  mv -v "${BIN_DIR}/git-remote-entire" "${INSTALL_DIR}/git-remote-entire.bin"
+  rmdir "$BIN_DIR" 2>/dev/null || true
+  HELPER="${INSTALL_DIR}/git-remote-entire.bin"
+  UA="git-remote-entire/0.0.0+${GIT_REMOTE_ENTIRE_SHA} (buildkite)"
 fi
-mv -v "${BIN_DIR}/git-remote-entire" "${INSTALL_DIR}/git-remote-entire.bin"
 
 # Shim keeps the UA off plain git calls.
-UA="git-remote-entire/0.0.0+${GIT_REMOTE_ENTIRE_SHA} (buildkite)"
 cat > "${INSTALL_DIR}/git-remote-entire" <<EOF
 #!/bin/sh
 export GIT_HTTP_USER_AGENT="\${GIT_HTTP_USER_AGENT-${UA}}"
-exec "${INSTALL_DIR}/git-remote-entire.bin" "\$@"
+exec "${HELPER}" "\$@"
 EOF
 chmod +x "${INSTALL_DIR}/git-remote-entire"
 
-rmdir "$BIN_DIR" 2>/dev/null || true
-
-echo "Installed git-remote-entire (${GIT_REMOTE_ENTIRE_SHA:0:12}, linux/${arch}) to ${INSTALL_DIR}"
+if [[ -n "$BAKED" ]]; then
+  echo "Using ${BAKED_VERSION} from ${BAKED}, shim in ${INSTALL_DIR}"
+else
+  echo "Installed git-remote-entire (${GIT_REMOTE_ENTIRE_SHA:0:12}, linux/${arch}) to ${INSTALL_DIR}"
+fi

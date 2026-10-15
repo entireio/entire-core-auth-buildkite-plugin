@@ -1,6 +1,6 @@
 # entire-core-auth-buildkite-plugin
 
-* Installs the git-remote-entire helper
+* Puts the git-remote-entire helper on PATH: the agent image's copy if it is 0.11.5 or newer, otherwise a pinned download
 * Grabs an `ENTIRE_TOKEN` from auth server
 
 To get a Buildkite pipeline bootstrapped, put this into the "YAML Pipeline" UI:

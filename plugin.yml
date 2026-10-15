@@ -4,9 +4,10 @@ description: |
     1. Exchanges the agent's OIDC token for an entire-core session token
        asserting the configured `resource` (RFC 8693), exporting
        ENTIRE_TOKEN and ENTIRE_CORE_AUTH_BASE_URL to the build env.
-    2. Downloads a pinned git-remote-entire from the public release
-       bucket and puts it on PATH so the native checkout (and later
-       steps) can resolve entire:// URLs.
+    2. Puts git-remote-entire on PATH so the native checkout (and later
+       steps) can resolve entire:// URLs: a helper already on PATH at
+       0.11.5 or newer is used, otherwise a pinned build is downloaded
+       from the public release bucket.
 author: https://github.com/entirehq
 requirements:
   - curl
